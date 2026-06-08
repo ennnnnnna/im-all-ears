@@ -1,27 +1,18 @@
 @import "tailwindcss";
 
-/* ── Custom palette from uploaded image ──────────────────────────────────────
-   Blue    #4B6BFB  →  primary / CTA
-   Purple  #7C3AED  →  accent / phase markers
-   Pink    #D946A8  →  Q&A / highlights
-   Red     #F43F5E  →  warnings / unresolved
-   Orange  #F97316  →  action items
-   Yellow  #EAB308  →  tags / keywords
-   ─────────────────────────────────────────────────────────────────────────── */
-
 :root {
-  --c-blue:   #4B6BFB;
-  --c-purple: #7C3AED;
-  --c-pink:   #D946A8;
-  --c-red:    #F43F5E;
-  --c-orange: #F97316;
-  --c-yellow: #EAB308;
+  --c-blue:   #7C3AED;
+  --c-purple: #D946A8;
+  --c-pink:   #F43F5E;
+  --c-red:    #F97316;
+  --c-orange: #EAB308;
+  --c-yellow: #4B6BFB;
 
-  --c-blue-soft:   #EEF2FF;
-  --c-purple-soft: #F5F3FF;
-  --c-pink-soft:   #FDF2F8;
-  --c-orange-soft: #FFF7ED;
-  --c-yellow-soft: #FEFCE8;
+  --c-blue-soft:   #F5F3FF;
+  --c-purple-soft: #FDF2F8;
+  --c-pink-soft:   #FFF1F2;
+  --c-orange-soft: #FEFCE8;
+  --c-yellow-soft: #EEF2FF;
 
   --c-ink:    #1E1F2E;
   --c-ink2:   #374151;
@@ -41,7 +32,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Typography scale ────────────────────────────────────────────────────── */
 .text-label {
   font-size: 11px;
   font-weight: 700;
@@ -54,13 +44,11 @@ body {
 .text-body-lg { font-size: 15px; line-height: 1.7;  color: var(--c-ink2); }
 .text-caption { font-size: 12px; color: var(--c-muted); }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────────── */
 .custom-scrollbar::-webkit-scrollbar       { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 99px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
 
-/* ── Chip / Tag ──────────────────────────────────────────────────────────── */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -74,12 +62,8 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
-.chip-blue   { background: var(--c-blue-soft);   color: var(--c-blue);   border-color: #C7D7FD; }
-.chip-purple { background: var(--c-purple-soft); color: var(--c-purple); border-color: #DDD6FE; }
-.chip-yellow { background: var(--c-yellow-soft); color: #92400E;         border-color: #FDE68A; }
-.chip-orange { background: var(--c-orange-soft); color: var(--c-orange); border-color: #FED7AA; }
-.chip-pink   { background: var(--c-pink-soft);   color: var(--c-pink);   border-color: #FBCFE8; }
-.chip-slate  { background: #F1F5F9; color: #475569; border-color: #E2E8F0; }
-
-.chip:hover  { filter: brightness(0.95); }
-.chip.active { filter: brightness(0.92); font-weight: 700; }
+.chip-blue   { background: var(--c-blue-soft); color: var(--c-blue); }
+.chip-purple { background: var(--c-purple-soft); color: var(--c-purple); }
+.chip-pink   { background: var(--c-pink-soft); color: var(--c-pink); }
+.chip-orange { background: var(--c-orange-soft); color: var(--c-orange); }
+.chip-yellow { background: var(--c-yellow-soft); color: var(--c-yellow); }

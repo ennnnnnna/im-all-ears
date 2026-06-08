@@ -15,13 +15,57 @@ const ai = new GoogleGenAI({
   httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
 });
 
+// Robust content generation helper with automatic model fallback and backoff for rate limits/quota exhaustion
+async function generateWithRetry(params: any, maxRetries = 3, initialDelay = 1500) {
+  // Try standard gemini-3.5-flash first, then fall back to gemini-2.5-flash if rate-limited or quota exceeded
+  const baseModel = params.model || "gemini-3.5-flash";
+  const modelsToTry = [baseModel, "gemini-3.5-flash", "gemini-2.5-flash"].filter((m, idx, self) => m && self.indexOf(m) === idx);
+
+  for (const currentModel of modelsToTry) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const adjustedParams = { ...params, model: currentModel };
+        return await ai.models.generateContent(adjustedParams);
+      } catch (error: any) {
+        const errorMsg = String(error?.message || error?.status || error || "").toLowerCase();
+        const isQuotaExceeded = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("exhausted") || errorMsg.includes("rate limit");
+        const isTransient =
+          errorMsg.includes("503") ||
+          errorMsg.includes("unavailable") ||
+          errorMsg.includes("high demand") ||
+          isQuotaExceeded ||
+          errorMsg.includes("overloaded");
+
+        // If it's a quota / limit error and we have other models to try, switch immediately without sleeping
+        if (isQuotaExceeded && currentModel !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(`[Gemini API] Quota/Limit reached for model "${currentModel}". Error: ${error?.message || error}. Dynamic fallback to next model...`);
+          break; // Exit retry loop for this model and try the next candidate model
+        }
+
+        if (isTransient && attempt < maxRetries - 1) {
+          const delay = initialDelay * Math.pow(2, attempt);
+          console.warn(`[Gemini API] Transient error (Attempt ${attempt + 1}/${maxRetries}) on model "${currentModel}". Retrying in ${delay}ms... Error:`, error?.message || error);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // If this is the last candidate model or it's a non-transient, non-recoverable error, throw it
+        if (currentModel === modelsToTry[modelsToTry.length - 1]) {
+          throw error;
+        }
+      }
+    }
+  }
+  throw new Error("모든 사용 가능한 모델(gemini-3.5-flash, gemini-2.5-flash)과 재시도 횟수를 소진했으나 콘텐츠 생성에 실패했습니다 (Quota Exceeded / Rate Limit).");
+}
+
 // ── Phase 1: Analyze speakers, topics, AND keywords ──────────────────────────
 app.post("/api/analyze-topics", async (req, res) => {
   try {
     const { transcript, excludedTopics = [] } = req.body;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateWithRetry({
+      model: "gemini-3.5-flash",
       contents: `
 Analyze the following meeting transcript.
 
@@ -79,14 +123,17 @@ app.post("/api/refine-transcript", async (req, res) => {
   try {
     const { transcript, glossary, questions, selectedTopics, speakerMap, keywords } = req.body;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateWithRetry({
+      model: "gemini-3.5-flash",
       contents: `
 You are a professional secretary and HR assistant.
 Refine the following meeting transcript into a RICH report.
 
 **RULES:**
-1. **Refinement**: Convert colloquial speech to professional literary Korean. Group consecutive lines by the same speaker.
+1. **Refinement (CRITICAL FOR PERFORMANCE)**: Convert colloquial speech/logs to high-value, professional literary Korean. 
+   - DO NOT translate or output trivial chat, repetitive greetings, filler words, or brief confirmations (like "네", "아 그래요", "알겠습니다").
+   - Instead of regurgitating every original sentence, combine and synthesize consecutive dialogues of the same speaker into cohesive, dense, high-quality paragraphs.
+   - Limit the total "refinedLines" array output to at most 12 to 20 highly meaningful key discussion blocks/turns that represent the core discussion flow. This is absolutely critical to prevent output token overload and API timeouts.
 2. **Glossary**: Correct terminology using: ${glossary}
 3. **Speaker Mapping**: Use mapped names: ${JSON.stringify(speakerMap)}.
 4. **Keywords context**: This meeting is tagged with [${(keywords || []).join(", ")}]. Use this context to better understand the domain.
@@ -181,7 +228,6 @@ ${transcript.substring(0, 15000)}
 app.post("/api/cross-analyze", async (req, res) => {
   try {
     const { meetings } = req.body;
-    // meetings: Array<{ title, date, type, keywords, analysis }>
 
     const meetingSummaries = meetings.map((m: any, i: number) => `
 ## 회의 ${i + 1}: ${m.title} (${m.date}, ${m.type})
@@ -192,8 +238,8 @@ ${m.analysis?.summaryItems?.map((s: any) => `- ${s.topic}: ${s.summary}`).join('
 ${m.analysis?.actionItems?.map((a: any) => `- [${a.who}] ${a.what} (${a.when})`).join('\n')}
 `).join('\n---\n');
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateWithRetry({
+      model: "gemini-3.5-flash",
       contents: `
 You are an expert HR and organizational analyst.
 Analyze the following ${meetings.length} meeting records and produce cross-meeting insights.

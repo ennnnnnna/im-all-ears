@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Meeting } from '../types';
-import { BarChart2, CheckSquare, TrendingUp, AlertTriangle, Sparkles, Calendar, Tag, Filter } from 'lucide-react';
+import { BarChart2, CheckSquare, TrendingUp, AlertTriangle, Sparkles, Filter, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CrossResult {
@@ -84,37 +84,46 @@ export default function InsightsPage({ meetings }: Props) {
         <p className="text-body mt-1">여러 회의록을 선택해 시계열 변화, 액션아이템 추적, 미해결 이슈를 분석합니다.</p>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white border border-[--c-border] rounded-2xl p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4" style={{ color: 'var(--c-blue)' }} />
-          <span className="text-label">필터</span>
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-6 shadow-[0_8px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:border-slate-300/50">
+        <div className="flex items-center gap-2 pb-1">
+          <Filter className="w-4 h-4 text-purple-600" />
+          <span className="text-xs font-black tracking-widest text-slate-500 uppercase">인사이트 분석 필터</span>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <select value={filterYear} onChange={e => setFilterYear(e.target.value)}
-            className="px-3 py-2 border border-[--c-border] rounded-xl text-sm outline-none bg-white cursor-pointer">
-            <option value="">연도 전체</option>
-            {allYears.map(y => <option key={y} value={y}>{y}년</option>)}
-          </select>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-2 border border-[--c-border] rounded-xl text-sm outline-none bg-white cursor-pointer">
-            <option value="">회의 종류 전체</option>
-            {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)}
-            className="px-3 py-2 border border-[--c-border] rounded-xl text-sm outline-none bg-white cursor-pointer">
-            <option value="">키워드 전체</option>
-            {allKeywords.map(k => <option key={k} value={k}>{k}</option>)}
-          </select>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="relative">
+            <select value={filterYear} onChange={e => setFilterYear(e.target.value)}
+              className="appearance-none w-full pl-4 pr-10 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 rounded-xl text-sm font-semibold text-slate-700 outline-none transition-all cursor-pointer">
+              <option value="">연도 전체</option>
+              {allYears.map(y => <option key={y} value={y}>{y}년</option>)}
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div className="relative">
+            <select value={filterType} onChange={e => setFilterType(e.target.value)}
+              className="appearance-none w-full pl-4 pr-10 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 rounded-xl text-sm font-semibold text-slate-700 outline-none transition-all cursor-pointer">
+              <option value="">회의 종류 전체</option>
+              {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div className="relative">
+            <select value={filterKeyword} onChange={e => setFilterKeyword(e.target.value)}
+              className="appearance-none w-full pl-4 pr-10 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 rounded-xl text-sm font-semibold text-slate-700 outline-none transition-all cursor-pointer">
+              <option value="">키워드 전체</option>
+              {allKeywords.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
         </div>
 
-        {/* Meeting checkboxes */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-caption">{filtered.length}개 회의록 · {selectedIds.size}개 선택됨</span>
             <div className="flex gap-3">
-              <button onClick={selectAll} className="text-sm font-semibold transition-colors" style={{ color: 'var(--c-blue)' }}>전체 선택</button>
-              <button onClick={clearAll} className="text-sm font-semibold transition-colors" style={{ color: 'var(--c-muted)' }}>선택 해제</button>
+              <button onClick={selectAll} className="text-sm font-semibold" style={{ color: 'var(--c-blue)' }}>전체 선택</button>
+              <button onClick={clearAll} className="text-sm font-semibold" style={{ color: 'var(--c-muted)' }}>선택 해제</button>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto custom-scrollbar">
@@ -138,40 +147,29 @@ export default function InsightsPage({ meetings }: Props) {
           </div>
         </div>
 
-        {/* Analyze button */}
-        <button
-          onClick={runAnalysis}
-          disabled={isAnalyzing || selectedIds.size < 2}
+        <button onClick={runAnalysis} disabled={isAnalyzing || selectedIds.size < 2}
           className="w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-wide text-white transition-all flex items-center justify-center gap-2"
           style={{
             background: (isAnalyzing || selectedIds.size < 2) ? '#E2E8F0' : 'var(--c-purple)',
             color: (isAnalyzing || selectedIds.size < 2) ? '#94A3B8' : '#fff',
             cursor: (isAnalyzing || selectedIds.size < 2) ? 'not-allowed' : 'pointer',
-          }}
-        >
+          }}>
           <Sparkles className="w-4 h-4" />
           {isAnalyzing ? '분석 중...' : `선택한 ${selectedIds.size}개 회의록 Cross-분석 시작`}
         </button>
         {selectedIds.size < 2 && <p className="text-caption text-center">2개 이상 선택해주세요.</p>}
       </div>
 
-      {/* Error */}
       {error && (
         <div className="p-4 rounded-xl text-sm font-semibold" style={{ background: '#FEF2F2', color: 'var(--c-red)', border: '1px solid #FCA5A5' }}>
           {error}
         </div>
       )}
 
-      {/* Results */}
       <AnimatePresence>
         {result && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            {/* Action item tracking */}
-            <ResultSection
-              icon={<CheckSquare className="w-5 h-5" style={{ color: 'var(--c-orange)' }} />}
-              title="액션아이템 추적"
-              color="var(--c-orange)"
-            >
+            <ResultSection icon={<CheckSquare className="w-5 h-5" style={{ color: 'var(--c-orange)' }} />} title="액션아이템 추적">
               <div className="space-y-2">
                 {result.actionItemTracking.map((a, i) => (
                   <div key={i} className="p-4 bg-white border border-[--c-border] rounded-xl flex items-start gap-3 hover:border-orange-200 transition-all">
@@ -191,12 +189,7 @@ export default function InsightsPage({ meetings }: Props) {
               </div>
             </ResultSection>
 
-            {/* Topic timeline */}
-            <ResultSection
-              icon={<TrendingUp className="w-5 h-5" style={{ color: 'var(--c-blue)' }} />}
-              title="주제 시계열 변화"
-              color="var(--c-blue)"
-            >
+            <ResultSection icon={<TrendingUp className="w-5 h-5" style={{ color: 'var(--c-blue)' }} />} title="주제 시계열 변화">
               <div className="space-y-3">
                 {result.topicTimeline.map((t, i) => (
                   <div key={i} className="p-4 bg-white border border-[--c-border] rounded-xl hover:border-blue-200 transition-all">
@@ -207,12 +200,7 @@ export default function InsightsPage({ meetings }: Props) {
               </div>
             </ResultSection>
 
-            {/* Unresolved issues */}
-            <ResultSection
-              icon={<AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-red)' }} />}
-              title="미해결 이슈"
-              color="var(--c-red)"
-            >
+            <ResultSection icon={<AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-red)' }} />} title="미해결 이슈">
               <div className="space-y-3">
                 {result.unresolvedIssues.map((u, i) => (
                   <div key={i} className="p-4 bg-white border border-[--c-border] rounded-xl hover:border-red-200 transition-all space-y-2">
@@ -234,7 +222,7 @@ export default function InsightsPage({ meetings }: Props) {
   );
 }
 
-function ResultSection({ icon, title, color, children }: { icon: React.ReactNode; title: string; color: string; children: React.ReactNode }) {
+function ResultSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div className="bg-gray-50 border border-[--c-border] rounded-2xl p-6 space-y-4">
       <div className="flex items-center gap-2">

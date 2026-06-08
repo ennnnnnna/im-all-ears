@@ -7,9 +7,8 @@ import AnalysisResult from './components/AnalysisResult';
 import ArchivePage from './components/ArchivePage';
 import InsightsPage from './components/InsightsPage';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Loader2, Archive, BarChart2, Plus, ArrowLeft } from 'lucide-react';
+import { Sparkles, Archive, BarChart2, Plus } from 'lucide-react';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
 const createEmptyMeeting = (): Meeting => ({
   id: crypto.randomUUID(),
   title: '',
@@ -26,7 +25,6 @@ const createEmptyMeeting = (): Meeting => ({
 
 type Page = 'analyze' | 'archive' | 'insights';
 
-// ── Component ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState<Page>('analyze');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -59,6 +57,18 @@ export default function App() {
   const handleLoadMeeting = (meeting: Meeting) => {
     setCurrentMeeting(meeting);
     setPhase(meeting.analysis ? 3 : 1);
+    
+    // Restore states for seamless editing in Phase 1 & 2
+    if (meeting.analysis) {
+      setDetectedSpeakers(Object.keys(meeting.speakerMap || {}));
+      setRecommendedTopics(meeting.analysis.topics || []);
+      setExcludedTopics(meeting.analysis.excludedTopics || []);
+    } else {
+      setDetectedSpeakers([]);
+      setRecommendedTopics([]);
+      setExcludedTopics([]);
+    }
+    setSuggestedKeywords(meeting.keywords || []);
     setError(null);
     setPage('analyze');
   };
@@ -89,10 +99,8 @@ export default function App() {
       setRecommendedTopics(data.topics || []);
       setSuggestedKeywords(data.keywords || []);
 
-      // Pre-fill keywords with AI suggestions (keep any manual ones already added)
       if (!options?.refresh) {
-        const existingManual = currentMeeting.keywords;
-        const merged = Array.from(new Set([...existingManual, ...(data.keywords || [])]));
+        const merged = Array.from(new Set([...currentMeeting.keywords, ...(data.keywords || [])]));
         setCurrentMeeting(m => ({ ...m, keywords: merged }));
       }
 
@@ -109,7 +117,7 @@ export default function App() {
 
     const fullSpeakerMap: Record<string, string> = { ...currentMeeting.speakerMap };
     detectedSpeakers.forEach((sid, idx) => {
-      if (!fullSpeakerMap[sid]?.trim()) fullSpeakerMap[sid] = `참석자 ${idx + 1}`;
+      if (!fullSpeakerMap[sid]?.trim()) fullSpeakerMap[sid] = sid;
     });
 
     setIsAnalyzing(true);
@@ -140,7 +148,7 @@ export default function App() {
         refinedTranscript: data.refinedLines.map((l: any, i: number) => ({ ...l, id: String(i) })),
       };
 
-      setCurrentMeeting(m => ({ ...m, analysis }));
+      setCurrentMeeting(m => ({ ...m, speakerMap: fullSpeakerMap, analysis }));
       setPhase(3);
     } catch (err: any) {
       setError(err.message);
@@ -158,14 +166,18 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[--c-bg] overflow-hidden">
-      {/* ── Top nav ── */}
-      <header className="bg-white border-b border-[--c-border] flex items-center justify-between px-6 h-14 shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5" style={{ color: 'var(--c-blue)' }} />
-          <span className="text-base font-black tracking-tight text-[--c-ink]">Smart Meeting Logger</span>
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between px-8 h-16 shrink-0 z-40 sticky top-0 transition-all duration-300">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-50/50 rounded-xl border border-purple-100/30 shadow-[sm_inset_0_1px_1px_rgba(255,255,255,0.6)]">
+            <Sparkles className="w-5 h-5 animate-pulse text-purple-600" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-base font-black tracking-tight text-slate-800 leading-none">Smart Meeting Logger</span>
+            <span className="text-[10px] text-purple-500 font-extrabold mt-1 tracking-tight">AI 기반 회의 정제 및 의사결정 요약 자동화 솔루션</span>
+          </div>
         </div>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-2xl border border-slate-200/30 shadow-inner">
           <NavBtn active={page === 'analyze'} onClick={() => setPage('analyze')} icon={<Sparkles className="w-4 h-4" />} label="분석" />
           <NavBtn active={page === 'archive'} onClick={() => setPage('archive')} icon={<Archive className="w-4 h-4" />} label="아카이브" />
           <NavBtn active={page === 'insights'} onClick={() => setPage('insights')} icon={<BarChart2 className="w-4 h-4" />} label="인사이트" />
@@ -173,15 +185,13 @@ export default function App() {
 
         <button
           onClick={handleNewMeeting}
-          className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all"
-          style={{ color: 'var(--c-blue)', borderColor: 'var(--c-blue-soft)', background: 'var(--c-blue-soft)' }}
+          className="group flex items-center gap-2 text-xs font-black px-4.5 py-2.5 rounded-xl border border-purple-100 text-purple-600 bg-purple-50/60 hover:bg-purple-600 hover:text-white hover:border-purple-600 hover:shadow-lg hover:shadow-purple-100 transition-all duration-200 cursor-pointer active:scale-95"
         >
-          <Plus className="w-3.5 h-3.5" />
-          새 분석
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          새 분석 시작하기
         </button>
       </header>
 
-      {/* ── Error banner ── */}
       {error && (
         <div className="mx-6 mt-4 p-3 rounded-xl text-sm font-semibold flex items-center gap-2"
           style={{ background: '#FEF2F2', color: 'var(--c-red)', border: '1px solid #FCA5A5' }}>
@@ -190,18 +200,18 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Main ── */}
       <main className="flex-1 overflow-hidden">
         <AnimatePresence mode="wait">
           {page === 'analyze' && (
             <motion.div key="analyze" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full flex flex-col overflow-hidden">
-              {/* Phase tabs */}
-              <div className="bg-white border-b border-[--c-border] px-6 py-2 flex items-center gap-4 shrink-0">
-                <PhaseTab n={1} active={phase === 1} label="입력" onClick={() => setPhase(1)} />
-                <div className="w-8 h-px bg-[--c-border]" />
-                <PhaseTab n={2} active={phase === 2} label="주제 선택" onClick={() => { if (detectedSpeakers.length) setPhase(2); }} disabled={!detectedSpeakers.length} />
-                <div className="w-8 h-px bg-[--c-border]" />
-                <PhaseTab n={3} active={phase === 3} label="리포트" onClick={() => { if (currentMeeting.analysis) setPhase(3); }} disabled={!currentMeeting.analysis} />
+              <div className="px-6 py-4 flex items-center justify-center gap-4 shrink-0">
+                <div className="bg-white px-6 py-3 rounded-2xl flex items-center gap-5 shadow-sm border border-slate-100">
+                  <PhaseTab n={1} active={phase === 1} label="1단계: 입력" onClick={() => setPhase(1)} />
+                  <div className="w-6 h-px bg-slate-200" />
+                  <PhaseTab n={2} active={phase === 2} label="2단계: 주제 선택" onClick={() => { if (detectedSpeakers.length) setPhase(2); }} disabled={!detectedSpeakers.length} />
+                  <div className="w-6 h-px bg-slate-200" />
+                  <PhaseTab n={3} active={phase === 3} label="3단계: 리포트" onClick={() => { if (currentMeeting.analysis) setPhase(3); }} disabled={!currentMeeting.analysis} />
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -216,6 +226,7 @@ export default function App() {
                         isAnalyzing={isAnalyzing}
                         detectedSpeakers={detectedSpeakers}
                         suggestedKeywords={suggestedKeywords}
+                        onSave={handleSaveMeeting}
                       />
                     </motion.div>
                   )}
@@ -232,6 +243,21 @@ export default function App() {
                             analysis: { ...(m.analysis || { topics: recommendedTopics, summaryItems: [], questionMappings: [], actionItems: [], refinedTranscript: [] }), selectedTopics: next }
                           }));
                         }}
+                        onSetSelectedTopics={(topics) => {
+                          setCurrentMeeting(m => ({
+                            ...m,
+                            analysis: { ...(m.analysis || { topics: recommendedTopics, summaryItems: [], questionMappings: [], actionItems: [], refinedTranscript: [] }), selectedTopics: topics }
+                          }));
+                        }}
+                        onReorderTopics={(reordered) => {
+                          setRecommendedTopics(reordered);
+                          const cur = currentMeeting.analysis?.selectedTopics || [];
+                          const next = reordered.filter(t => cur.includes(t));
+                          setCurrentMeeting(m => ({
+                            ...m,
+                            analysis: { ...(m.analysis || { topics: reordered, summaryItems: [], questionMappings: [], actionItems: [], refinedTranscript: [] }), selectedTopics: next }
+                          }));
+                        }}
                         onExcludeTopic={(topic) => {
                           setExcludedTopics(e => [...e, topic]);
                           setRecommendedTopics(t => t.filter(x => x !== topic));
@@ -242,6 +268,7 @@ export default function App() {
                         onRefreshTopics={() => startPhase1Analysis({ refresh: true })}
                         onStartFinalAnalysis={startPhase2Analysis}
                         isAnalyzing={isAnalyzing}
+                        onSave={handleSaveMeeting}
                       />
                     </motion.div>
                   )}
@@ -252,7 +279,7 @@ export default function App() {
                         setMeeting={setCurrentMeeting}
                         onSave={handleSaveMeeting}
                         onUpdateRefinedTranscript={(lines) => {
-                          if (window.confirm('원문이 수정되었습니다.\n수정된 스크립트로 1차 분석을 다시 진행하시겠습니까?')) {
+                          if (window.confirm('전문이 수정되었습니다.\n수정된 스크립트로 1차 분석을 다시 진행하시겠습니까?')) {
                             const reconstructed = lines.map(l => `[${l.speakerName}] ${l.text}`).join('\n');
                             setCurrentMeeting(m => ({ ...m, originalTranscript: reconstructed, analysis: undefined }));
                             setDetectedSpeakers([]);
@@ -275,11 +302,7 @@ export default function App() {
 
           {page === 'archive' && (
             <motion.div key="archive" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto custom-scrollbar">
-              <ArchivePage
-                meetings={meetings}
-                onLoad={handleLoadMeeting}
-                onDelete={handleDeleteMeeting}
-              />
+              <ArchivePage meetings={meetings} onLoad={handleLoadMeeting} onDelete={handleDeleteMeeting} />
             </motion.div>
           )}
 
@@ -294,18 +317,21 @@ export default function App() {
   );
 }
 
-// ── Small UI helpers ──────────────────────────────────────────────────────────
 function NavBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
-      style={{
-        background: active ? 'var(--c-blue-soft)' : 'transparent',
-        color: active ? 'var(--c-blue)' : 'var(--c-muted)',
-      }}
+    <button 
+      onClick={onClick} 
+      className={`
+        flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wider uppercase transition-all duration-200 cursor-pointer
+        ${active 
+          ? 'bg-white text-purple-600 shadow-[0_4px_12px_rgba(124,58,237,0.08)] border border-slate-200/50' 
+          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/40 border border-transparent'}
+      `}
     >
-      {icon}{label}
+      <span className={active ? 'text-purple-500 scale-110' : 'text-slate-400'}>
+        {icon}
+      </span>
+      {label}
     </button>
   );
 }
@@ -315,17 +341,27 @@ function PhaseTab({ n, active, label, onClick, disabled }: { n: number; active: 
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-2 transition-all"
-      style={{ opacity: disabled ? 0.35 : 1, cursor: disabled ? 'default' : 'pointer' }}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all ${
+        active ? '' : 'hover:bg-slate-50'
+      }`}
+      style={{
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+        background: active ? 'var(--c-blue-soft)' : 'transparent',
+      }}
     >
-      <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-black transition-all"
+      <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black transition-all"
         style={{
           background: active ? 'var(--c-blue)' : '#F1F5F9',
           color: active ? '#fff' : 'var(--c-muted)',
+          boxShadow: active ? '0 2px 8px rgba(79, 70, 229, 0.15)' : 'none',
         }}>
         {n}
       </span>
-      <span className="text-sm font-semibold" style={{ color: active ? 'var(--c-ink)' : 'var(--c-muted)' }}>{label}</span>
+      <span className="text-xs sm:text-sm font-extrabold transition-colors"
+        style={{ color: active ? 'var(--c-blue)' : 'var(--c-muted)' }}>
+        {label}
+      </span>
     </button>
   );
 }

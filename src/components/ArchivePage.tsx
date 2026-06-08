@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Meeting } from '../types';
-import { Search, Trash2, FileText, Calendar, Tag, ChevronRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Search, Trash2, FileText, Calendar, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
   meetings: Meeting[];
@@ -13,6 +13,10 @@ export default function ArchivePage({ meetings, onLoad, onDelete }: Props) {
   const [query, setQuery] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterKeyword, setFilterKeyword] = useState('');
+
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [showDeletedSuccessModal, setShowDeletedSuccessModal] = useState(false);
+  const [selectedDeleteId, setSelectedDeleteId] = useState<string | null>(null);
 
   const allTypes = Array.from(new Set(meetings.map(m => m.type).filter(Boolean)));
   const allKeywords = Array.from(new Set(meetings.flatMap(m => m.keywords).filter(Boolean)));
@@ -27,13 +31,11 @@ export default function ArchivePage({ meetings, onLoad, onDelete }: Props) {
 
   return (
     <div className="max-w-[960px] mx-auto py-10 px-6 space-y-8">
-      {/* Header */}
       <div>
         <h2 className="text-2xl font-black text-[--c-ink] tracking-tight">회의록 아카이브</h2>
         <p className="text-body mt-1">저장된 회의록을 검색하고 불러오세요.</p>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="flex items-center gap-2 px-4 py-2 bg-white border border-[--c-border] rounded-xl flex-1 min-w-[200px]">
           <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--c-muted)' }} />
@@ -57,10 +59,8 @@ export default function ArchivePage({ meetings, onLoad, onDelete }: Props) {
         </select>
       </div>
 
-      {/* Count */}
       <p className="text-caption">{filtered.length}개의 회의록</p>
 
-      {/* List */}
       {filtered.length === 0 ? (
         <div className="text-center py-24 space-y-3">
           <FileText className="w-12 h-12 mx-auto" style={{ color: '#E2E8F0' }} />
@@ -103,11 +103,15 @@ export default function ArchivePage({ meetings, onLoad, onDelete }: Props) {
 
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={e => { e.stopPropagation(); if (window.confirm('이 회의록을 삭제하시겠습니까?')) onDelete(m.id); }}
-                  className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setSelectedDeleteId(m.id);
+                    setShowConfirmDeleteModal(true);
+                  }}
+                  className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50 cursor-pointer"
                   style={{ color: '#CBD5E1' }}
                 >
-                  <Trash2 className="w-4 h-4 hover:text-red-400" />
+                  <Trash2 className="w-4 h-4 hover:text-rose-500 transition-colors" />
                 </button>
                 <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-all" style={{ color: 'var(--c-blue)' }} />
               </div>
@@ -115,6 +119,81 @@ export default function ArchivePage({ meetings, onLoad, onDelete }: Props) {
           ))}
         </div>
       )}
+
+      <AnimatePresence>
+        {showConfirmDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm shadow-2xl" onClick={() => { setShowConfirmDeleteModal(false); setSelectedDeleteId(null); }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full border border-slate-100 space-y-6 text-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mx-auto w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 shadow-inner">
+                <Trash2 className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-black text-slate-800">삭제하시겠습니까?</h3>
+                <p className="text-xs text-slate-400 font-bold leading-relaxed">삭제된 회의록은 복구하실 수 없습니다.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowConfirmDeleteModal(false);
+                    setSelectedDeleteId(null);
+                  }}
+                  className="px-5 py-3.5 border border-slate-200 text-slate-500 hover:bg-slate-50 rounded-2xl text-xs font-black tracking-wider uppercase transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  아니요
+                </button>
+                <button
+                  onClick={() => {
+                    if (selectedDeleteId) {
+                      onDelete(selectedDeleteId);
+                      setShowConfirmDeleteModal(false);
+                      setShowDeletedSuccessModal(true);
+                    }
+                  }}
+                  className="px-5 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-black tracking-wider uppercase shadow-lg shadow-rose-100 transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  네
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showDeletedSuccessModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm shadow-2xl" onClick={() => { setShowDeletedSuccessModal(false); setSelectedDeleteId(null); }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full border border-slate-100 space-y-6 text-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mx-auto w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 shadow-inner">
+                <span className="text-xl font-black">✓</span>
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-800">삭제되었습니다.</h3>
+              </div>
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    setShowDeletedSuccessModal(false);
+                    setSelectedDeleteId(null);
+                  }}
+                  className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black tracking-wider uppercase shadow-md transition-all active:scale-[0.98] cursor-pointer font-black"
+                >
+                  확인
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

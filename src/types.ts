@@ -6,7 +6,7 @@ export interface ActionItem {
   who: string;
   what: string;
   when: string;
-  status?: 'pending' | 'done'; // v2: tracking
+  status?: 'pending' | 'done';
 }
 
 export interface Citation {
@@ -45,33 +45,17 @@ export interface MeetingAnalysis {
 }
 
 export interface Meeting {
-  // identity
   id: string;
   title: string;
-  date: string;         // YYYY.MM.DD
-  type: string;         // 회의 종류 e.g. 간담회
-  keywords: string[];   // AI-suggested + manual tags
-
-  // input
+  date: string;
+  type: string;
+  keywords: string[];
   originalTranscript: string;
   glossary: string;
   prefixedQuestions: string;
-  speakerMap: Record<string, string>; // speakerId → displayName
-
-  // output
+  speakerMap: Record<string, string>;
   analysis?: MeetingAnalysis;
-
-  // meta
-  createdAt: string;    // ISO string
-  updatedAt: string;    // ISO string
-
-  // v2: sync marker (will be used when switching to Firebase)
+  createdAt: string;
+  updatedAt: string;
   syncedAt?: string;
-}
-
-// v2 placeholder — swap body for Firebase calls
-export interface StorageAdapter {
-  getAll: () => Promise<Meeting[]>;
-  save: (meeting: Meeting) => Promise<void>;
-  remove: (id: string) => Promise<void>;
 }
