@@ -55,6 +55,10 @@ export interface Meeting {
   prefixedQuestions: string;
   speakerMap: Record<string, string>;
   analysis?: MeetingAnalysis;
+  preprocessStats?: {
+    before: number;
+    after: number;
+  };
   createdAt: string;
   updatedAt: string;
   syncedAt?: string;

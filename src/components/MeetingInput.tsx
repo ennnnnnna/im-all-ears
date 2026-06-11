@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Meeting } from '../types';
-import { User, ChevronDown, Play, Settings2, Sparkles, CheckSquare, RotateCw, Calendar, Type, FileText, Save } from 'lucide-react';
+import { preprocessTranscript } from '../utils/preprocess';
+import { User, ChevronDown, Play, Settings2, Sparkles, CheckSquare, RotateCw, Calendar, Type, FileText, Save, Sparkle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface MeetingInputProps {
@@ -12,6 +13,7 @@ interface MeetingInputProps {
   detectedSpeakers: string[];
   suggestedKeywords?: string[];
   onSave?: () => void;
+  onPreprocessApplied?: (result: any) => void;
 }
 
 const EXAMPLE_TRANSCRIPT = `🧭 미지의 세계 탐사대 소통 기록
@@ -83,10 +85,19 @@ export default function MeetingInput({
   isAnalyzing,
   detectedSpeakers,
   suggestedKeywords = [],
-  onSave
+  onSave,
+  onPreprocessApplied
 }: MeetingInputProps) {
   const [showSpeakerModal, setShowSpeakerModal] = useState(false);
   const [newKeyword, setNewKeyword] = useState('');
+
+  const handleRunPreprocess = () => {
+    if (!meeting.originalTranscript) return;
+    const res = preprocessTranscript(meeting.originalTranscript);
+    if (onPreprocessApplied) {
+      onPreprocessApplied(res);
+    }
+  };
 
   const handleSpeakerChange = (id: string, name: string) => {
     setMeeting({
@@ -200,6 +211,35 @@ export default function MeetingInput({
                   placeholder="[참석자 1] [00:00:15] 안녕하세요, 오늘 회의 시작하겠습니다.&#10;[홍길동] [00:00:20] 예, 인사팀장 홍길동입니다..."
                   className="flex-1 w-full min-h-[550px] p-5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-100 focus:border-purple-400 outline-none resize-none bg-slate-50/10 hover:bg-slate-50/20 focus:bg-white transition-all placeholder:text-slate-400 font-medium leading-relaxed shadow-sm md:min-h-[580px]"
                 />
+
+                {/* CLOVA Note Smart Preprocessing Panel */}
+                <div className="mt-4 p-4.5 bg-purple-50/40 border border-purple-100/50 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all hover:bg-purple-50/60 shadow-sm">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-black text-purple-700 flex items-center gap-1.5 uppercase tracking-wide">
+                      <Sparkle className="w-4 h-4 text-purple-600 fill-purple-100" />
+                      클로바노트 스마트 전처리 필터
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-bold leading-normal">
+                      타임스탬프와 간투사(음, 어, 그, 막, 이제 뭐...)를 제거하고 화자 태그를 정제합니다. (AI 분석 전 브라우저 실행)
+                    </p>
+                  </div>
+                  
+                  <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    {meeting.preprocessStats && (
+                      <div className="text-right text-xs font-black text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 flex items-center justify-center gap-1 leading-none shadow-sm">
+                        ✨ {meeting.preprocessStats.before.toLocaleString()}자 &rarr; {meeting.preprocessStats.after.toLocaleString()}자로 정리되었습니다
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleRunPreprocess}
+                      disabled={!meeting.originalTranscript}
+                      className="whitespace-nowrap px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm shadow-purple-100 flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      전처리 적용하기
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

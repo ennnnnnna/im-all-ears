@@ -8,6 +8,7 @@ import ArchivePage from './components/ArchivePage';
 import InsightsPage from './components/InsightsPage';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Archive, BarChart2, Plus } from 'lucide-react';
+import { preprocessTranscript, PreprocessResult } from './utils/preprocess';
 
 const createEmptyMeeting = (): Meeting => ({
   id: crypto.randomUUID(),
@@ -79,29 +80,99 @@ export default function App() {
     if (currentMeeting.id === id) handleNewMeeting();
   };
 
+  const handlePreprocessApplied = (result: PreprocessResult) => {
+    setCurrentMeeting(m => {
+      const nextSpeakerMap = { ...m.speakerMap };
+      result.detectedClovaSpeakers.forEach(s => {
+        if (!nextSpeakerMap[s]) {
+          nextSpeakerMap[s] = s;
+        }
+      });
+      return {
+        ...m,
+        originalTranscript: result.cleanedText,
+        speakerMap: nextSpeakerMap,
+        preprocessStats: {
+          before: result.beforeCount,
+          after: result.afterCount
+        }
+      };
+    });
+
+    setDetectedSpeakers(prev => Array.from(new Set([...prev, ...result.detectedClovaSpeakers])));
+  };
+
   const startPhase1Analysis = async (options?: { refresh?: boolean; stayInPhase1?: boolean }) => {
     if (!currentMeeting.originalTranscript) return;
     setIsAnalyzing(true);
     setError(null);
     try {
+      // 1. Run browser-side preprocessing before AI invocation
+      const preprocessResult = preprocessTranscript(currentMeeting.originalTranscript);
+      const cleanedTranscript = preprocessResult.cleanedText;
+      const initialClovaSpeakers = preprocessResult.detectedClovaSpeakers;
+
+      // Update speakerMap in meeting without overwriting existing mappings
+      const updatedSpeakerMap = { ...currentMeeting.speakerMap };
+      initialClovaSpeakers.forEach(s => {
+        if (!updatedSpeakerMap[s]) {
+          updatedSpeakerMap[s] = s;
+        }
+      });
+
+      // Update current meeting state
+      const nextMeeting = {
+        ...currentMeeting,
+        originalTranscript: cleanedTranscript,
+        speakerMap: updatedSpeakerMap,
+        preprocessStats: {
+          before: preprocessResult.beforeCount,
+          after: preprocessResult.afterCount
+        }
+      };
+      setCurrentMeeting(nextMeeting);
+
+      // Invoke backend AI with the preprocessed, clean text
       const response = await fetch('/api/analyze-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: currentMeeting.originalTranscript,
+          transcript: cleanedTranscript,
           excludedTopics: options?.refresh ? excludedTopics : [],
         }),
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error);
 
-      setDetectedSpeakers(data.speakers || []);
+      // Merge speakers from server with locally preprocessed ones
+      const mergedSpeakers = Array.from(new Set([...initialClovaSpeakers, ...(data.speakers || [])]));
+
+      setDetectedSpeakers(mergedSpeakers);
       setRecommendedTopics(data.topics || []);
       setSuggestedKeywords(data.keywords || []);
 
       if (!options?.refresh) {
-        const merged = Array.from(new Set([...currentMeeting.keywords, ...(data.keywords || [])]));
-        setCurrentMeeting(m => ({ ...m, keywords: merged }));
+        const mergedKeywords = Array.from(new Set([...nextMeeting.keywords, ...(data.keywords || [])]));
+        setCurrentMeeting(m => ({
+          ...m,
+          originalTranscript: cleanedTranscript,
+          speakerMap: updatedSpeakerMap,
+          preprocessStats: {
+            before: preprocessResult.beforeCount,
+            after: preprocessResult.afterCount
+          },
+          keywords: mergedKeywords
+        }));
+      } else {
+        setCurrentMeeting(m => ({
+          ...m,
+          originalTranscript: cleanedTranscript,
+          speakerMap: updatedSpeakerMap,
+          preprocessStats: {
+            before: preprocessResult.beforeCount,
+            after: preprocessResult.afterCount
+          }
+        }));
       }
 
       if (!options?.stayInPhase1) setPhase(2);
@@ -232,6 +303,7 @@ export default function App() {
                         detectedSpeakers={detectedSpeakers}
                         suggestedKeywords={suggestedKeywords}
                         onSave={handleSaveMeeting}
+                        onPreprocessApplied={handlePreprocessApplied}
                       />
                     </motion.div>
                   )}
