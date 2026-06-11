@@ -24,7 +24,15 @@ export const storage = {
     } else {
       all.unshift(meeting);
     }
-    localStorage.setItem(KEY, JSON.stringify(all));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(all));
+    } catch (e: any) {
+      console.error("LocalStorage save failed:", e);
+      if (e.name === 'QuotaExhaustedError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014) {
+        throw new Error("로컬 스토리지 저장 용량이 초과되었습니다. 오래되고 불필요한 과거 회의록 자료를 삭제한 후 다시 시도해 주세요.");
+      }
+      throw e;
+    }
   },
 
   remove(id: string): void {

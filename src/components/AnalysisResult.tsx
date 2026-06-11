@@ -6,6 +6,16 @@ import TranscriptEditor from './TranscriptEditor';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
+function escapeHTML(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function TopicAccordion({ item, index, onJumpToTranscript, speakerMap }: {
   key?: React.Key | number;
   item: SummaryItem; index: number;
@@ -250,14 +260,14 @@ export default function AnalysisResult({ meeting, setMeeting, onSave, onUpdateRe
     const headerHTML = `
       <div style="border-bottom: 2px solid #7C3AED; padding-bottom: 20px; margin-bottom: 30px;">
         <p style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #7C3AED; margin: 0 0 6px 0;">Smart Meeting Logger — 요약 리포트</p>
-        <h1 style="font-size: 26px; font-weight: 900; color: #1E1F2E; margin: 0 0 12px 0; line-height: 1.2;">${meeting.title || '제목 없음'}</h1>
+        <h1 style="font-size: 26px; font-weight: 900; color: #1E1F2E; margin: 0 0 12px 0; line-height: 1.2;">${escapeHTML(meeting.title || '제목 없음')}</h1>
         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; color: #64748b;">
-          ${meeting.type ? `<span style="background: #F5F3FF; color: #7C3AED; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 1.5px solid rgba(124, 58, 237, 0.1);">${meeting.type}</span>` : ''}
-          <span style="font-weight: 600;">일시: ${meeting.date || '-'}</span>
+          ${meeting.type ? `<span style="background: #F5F3FF; color: #7C3AED; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 1.5px solid rgba(124, 58, 237, 0.1);">${escapeHTML(meeting.type)}</span>` : ''}
+          <span style="font-weight: 600;">일시: ${escapeHTML(meeting.date || '-')}</span>
           ${meeting.keywords && meeting.keywords.length > 0 ? `
             <span style="color: #cbd5e1; margin: 0 4px;">|</span>
             <div style="display: flex; gap: 6px;">
-              ${meeting.keywords.filter(Boolean).map(kw => `<span style="color: #4B6BFB; font-weight: 600; font-size: 13px;">#${kw}</span>`).join(' ')}
+              ${meeting.keywords.filter(Boolean).map(kw => `<span style="color: #4B6BFB; font-weight: 600; font-size: 13px;">#${escapeHTML(kw)}</span>`).join(' ')}
             </div>
           ` : ''}
         </div>
@@ -275,10 +285,10 @@ export default function AnalysisResult({ meeting, setMeeting, onSave, onUpdateRe
               <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; background: #fff;">
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                   <span style="background: #F5F3FF; color: #7C3AED; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 900; font-size: 13px;">${idx + 1}</span>
-                  <span style="font-size: 15.5px; font-weight: 800; color: #1E1F2E;">${item.topic}</span>
+                  <span style="font-size: 15.5px; font-weight: 800; color: #1E1F2E;">${escapeHTML(item.topic)}</span>
                 </div>
                 <div style="font-size: 14px; line-height: 1.7; color: #334155; padding: 14px; background: #faf5ff; border-radius: 8px; border: 1px solid #f3e8ff; margin-bottom: 8px;">
-                  ${item.summary}
+                  ${escapeHTML(item.summary)}
                 </div>
                 ${item.citations && item.citations.length > 0 ? `
                   <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e2e8f0;">
@@ -286,9 +296,9 @@ export default function AnalysisResult({ meeting, setMeeting, onSave, onUpdateRe
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                       ${item.citations.map(c => `
                         <div style="font-size: 12px; color: #64748b; line-height: 1.5; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #f1f5f9;">
-                          <span style="color: #7C3AED; font-weight: 700; margin-right: 4px;">[${c.id}]</span>
-                          <span style="font-style: italic;">"${c.text}"</span>
-                          <span style="font-weight: 700; font-size: 11px; color: #94a3b8; margin-left: 6px;">— ${meeting.speakerMap[c.speaker] || c.speaker}</span>
+                          <span style="color: #7C3AED; font-weight: 700; margin-right: 4px;">[${escapeHTML(String(c.id))}]</span>
+                          <span style="font-style: italic;">"${escapeHTML(c.text)}"</span>
+                          <span style="font-weight: 700; font-size: 11px; color: #94a3b8; margin-left: 6px;">— ${escapeHTML(meeting.speakerMap[c.speaker] || c.speaker)}</span>
                         </div>
                       `).join('')}
                     </div>
@@ -312,11 +322,11 @@ export default function AnalysisResult({ meeting, setMeeting, onSave, onUpdateRe
               <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; background: #fff;">
                 <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
                   <span style="background: #FFF1F2; color: #F43F5E; font-weight: 900; font-size: 11px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; margin-top: 2px;">질문 ${idx + 1}</span>
-                  <span style="font-size: 14.5px; font-weight: 800; color: #1E1F2E; line-height: 1.4;">${item.question}</span>
+                  <span style="font-size: 14.5px; font-weight: 800; color: #1E1F2E; line-height: 1.4;">${escapeHTML(item.question)}</span>
                 </div>
                 <div style="font-size: 13.5px; line-height: 1.6; color: #475569; padding: 12px; background: #fff5f5; border-radius: 8px; border: 1px solid #ffe4e6; display: flex; gap: 8px;">
                   <span style="color: #D946A8; font-weight: 900; shrink-0;">A.</span>
-                  <span style="font-weight: 700; color: #475569;">${item.answerMapping}</span>
+                  <span style="font-weight: 700; color: #475569;">${escapeHTML(item.answerMapping)}</span>
                 </div>
               </div>
             `).join('')}
@@ -336,17 +346,17 @@ export default function AnalysisResult({ meeting, setMeeting, onSave, onUpdateRe
               <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; background: #fff;">
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                   <span style="background: #FEFCE8; color: #EAB308; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 800; font-size: 12px;">${idx + 1}</span>
-                  <span style="font-size: 14.5px; font-weight: 800; color: #1E1F2E;">${item.what}</span>
+                  <span style="font-size: 14.5px; font-weight: 800; color: #1E1F2E;">${escapeHTML(item.what)}</span>
                 </div>
                 <div style="display: flex; gap: 15px; flex-wrap: wrap; font-size: 12.5px; color: #475569; background: #fefcf0; padding: 8px 12px; border-radius: 6px; border: 1px solid #fef08a;">
                   <div>
                     <span style="font-weight: 800; color: #CA8A04; background: #fef9c3; padding: 2px 6px; border-radius: 4px; margin-right: 6px;">담당자</span>
-                    <span style="font-weight: 700; color: #1e293b;">${meeting.speakerMap[item.who] || item.who}</span>
+                    <span style="font-weight: 700; color: #1e293b;">${escapeHTML(meeting.speakerMap[item.who] || item.who)}</span>
                   </div>
                   ${item.when ? `
                     <div>
                       <span style="font-weight: 800; color: #475569; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; margin-right: 6px;">기한</span>
-                      <span style="font-weight: 700; color: #1e293b;">${item.when}</span>
+                      <span style="font-weight: 700; color: #1e293b;">${escapeHTML(item.when)}</span>
                     </div>
                   ` : ''}
                 </div>

@@ -158,10 +158,15 @@ export default function App() {
   };
 
   const handleSaveMeeting = () => {
-    const toSave = { ...currentMeeting, updatedAt: new Date().toISOString() };
-    storage.save(toSave);
-    refreshMeetings();
-    alert('저장되었습니다!');
+    try {
+      const toSave = { ...currentMeeting, updatedAt: new Date().toISOString() };
+      storage.save(toSave);
+      refreshMeetings();
+      alert('저장되었습니다!');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || '저장 중 오류가 발생했습니다.');
+    }
   };
 
   return (

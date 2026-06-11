@@ -158,7 +158,7 @@ export default function TopicSelection({
                   dragOverIndex === index ? 'bg-purple-50/80 border-2 border-dashed border-purple-300 shadow-md scale-[1.01]' : 'border-2 border-transparent'
                 }`}
                 draggable={!isAnalyzing}
-                onDragStart={(e) => handleDragStart(e, index)}
+                onDragStart={(e) => handleDragStart(e as any, index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragLeave={() => setDragOverIndex(null)}
                 onDragEnd={handleDragEnd}

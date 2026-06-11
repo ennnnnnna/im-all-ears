@@ -3,12 +3,48 @@ import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ path: ['.env.local', '.env'] });
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
+
+// Simple in-memory rate limiter: max 10 requests per minute per IP
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function apiRateLimiter(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const ip = (req.headers['x-forwarded-for'] as string) || req.ip || "unknown-ip";
+  const now = Date.now();
+  const limitWindow = 60000; // 1 minute
+  const limit = 10;
+
+  // Periodic cleanup if store grows large
+  if (rateLimitStore.size > 1000) {
+    for (const [key, val] of rateLimitStore.entries()) {
+      if (now > val.resetTime) {
+        rateLimitStore.delete(key);
+      }
+    }
+  }
+
+  const record = rateLimitStore.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + limitWindow });
+    return next();
+  }
+
+  if (record.count >= limit) {
+    return res.status(429).json({
+      error: "요청 발생 허용 한도를 초과했습니다. 1분에 최대 10회까지 요청할 수 있습니다."
+    });
+  }
+
+  record.count += 1;
+  next();
+}
+
+app.use("/api", apiRateLimiter);
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -64,6 +100,10 @@ app.post("/api/analyze-topics", async (req, res) => {
   try {
     const { transcript, excludedTopics = [] } = req.body;
 
+    if (!transcript || typeof transcript !== 'string' || !transcript.trim()) {
+      return res.status(400).json({ error: "회의록 대화 전문내용이 비어 있으며 분석을 시작할 수 없습니다." });
+    }
+
     const response = await generateWithRetry({
       model: "gemini-3.5-flash",
       contents: `
@@ -114,7 +154,7 @@ ${transcript.substring(0, 20000)}
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Analysis error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "회의 분석 도중 서버에서 오류가 발생했습니다. 잠시 후 다시 시도해주시기 바랍니다." });
   }
 });
 
@@ -122,6 +162,10 @@ ${transcript.substring(0, 20000)}
 app.post("/api/refine-transcript", async (req, res) => {
   try {
     const { transcript, glossary, questions, selectedTopics, speakerMap, keywords } = req.body;
+
+    if (!transcript || typeof transcript !== 'string' || !transcript.trim()) {
+      return res.status(400).json({ error: "정리 대상인 회의록 대화 전문내용이 누락되었거나 존재하지 않습니다." });
+    }
 
     const response = await generateWithRetry({
       model: "gemini-3.5-flash",
@@ -220,7 +264,7 @@ ${transcript.substring(0, 15000)}
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Refinement error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "회의록 심층 리포트 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주시기 바랍니다." });
   }
 });
 
@@ -228,6 +272,10 @@ ${transcript.substring(0, 15000)}
 app.post("/api/cross-analyze", async (req, res) => {
   try {
     const { meetings } = req.body;
+
+    if (!meetings || !Array.isArray(meetings) || meetings.length < 2) {
+      return res.status(400).json({ error: "회의를 교차 분석하기 위해서는 최소 2개 이상의 회의가 입력되어야 합니다." });
+    }
 
     const meetingSummaries = meetings.map((m: any, i: number) => `
 ## 회의 ${i + 1}: ${m.title} (${m.date}, ${m.type})
@@ -303,7 +351,7 @@ ALL OUTPUT MUST BE IN KOREAN.
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
     console.error("Cross-analysis error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "회의록 교차 분석 도중 서버에서 오류가 발생했습니다. 잠시 후 다시 시도해주시기 바랍니다." });
   }
 });
 
