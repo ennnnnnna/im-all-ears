@@ -8,7 +8,7 @@ import ArchivePage from './components/ArchivePage';
 import InsightsPage from './components/InsightsPage';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Archive, BarChart2, Plus } from 'lucide-react';
-import { preprocessTranscript, PreprocessResult } from './utils/preprocess';
+import { preprocessTranscript, PreprocessResult, splitIntoChunks, mergeAnalyzeTopicsResponses, mergeRefineTranscriptResponses } from './utils/preprocess';
 
 const createEmptyMeeting = (): Meeting => ({
   id: crypto.randomUUID(),
@@ -32,17 +32,31 @@ export default function App() {
   const [currentMeeting, setCurrentMeeting] = useState<Meeting>(createEmptyMeeting());
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string | null>(null);
   const [detectedSpeakers, setDetectedSpeakers] = useState<string[]>([]);
   const [recommendedTopics, setRecommendedTopics] = useState<string[]>([]);
   const [suggestedKeywords, setSuggestedKeywords] = useState<string[]>([]);
   const [excludedTopics, setExcludedTopics] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMeetings(storage.getAll());
-  }, []);
+  const refreshMeetings = async () => {
+    try {
+      const res = await fetch('/api/notion/meetings');
+      if (res.ok) {
+        const data = await res.json();
+        setMeetings(data);
+      } else {
+        setMeetings(storage.getAll());
+      }
+    } catch (err) {
+      console.warn("Could not load from Notion. Falling back to local storage.", err);
+      setMeetings(storage.getAll());
+    }
+  };
 
-  const refreshMeetings = () => setMeetings(storage.getAll());
+  useEffect(() => {
+    refreshMeetings();
+  }, []);
 
   const handleNewMeeting = () => {
     setCurrentMeeting(createEmptyMeeting());
@@ -55,29 +69,82 @@ export default function App() {
     setPage('analyze');
   };
 
-  const handleLoadMeeting = (meeting: Meeting) => {
-    setCurrentMeeting(meeting);
-    setPhase(meeting.analysis ? 3 : 1);
-    
-    // Restore states for seamless editing in Phase 1 & 2
-    if (meeting.analysis) {
-      setDetectedSpeakers(Object.keys(meeting.speakerMap || {}));
-      setRecommendedTopics(meeting.analysis.topics || []);
-      setExcludedTopics(meeting.analysis.excludedTopics || []);
-    } else {
-      setDetectedSpeakers([]);
-      setRecommendedTopics([]);
-      setExcludedTopics([]);
-    }
-    setSuggestedKeywords(meeting.keywords || []);
+  const handleLoadMeeting = async (meeting: Meeting) => {
     setError(null);
-    setPage('analyze');
+    setIsAnalyzing(true);
+    setAnalysisProgress('회의 상세 정보를 노션에서 불러오는 중...');
+    try {
+      let fullMeeting = meeting;
+      // Lazy load details if requested from list-only item lacking originalTranscript
+      if (meeting.notionPageId && !meeting.originalTranscript) {
+        const res = await fetch(`/api/notion/meetings/${meeting.notionPageId}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || '노션 아카이브 상세 정보를 가져올 수 없습니다.');
+        }
+        fullMeeting = await res.json();
+      }
+      
+      setCurrentMeeting(fullMeeting);
+      setPhase(fullMeeting.analysis ? 3 : 1);
+      
+      if (fullMeeting.analysis) {
+        setDetectedSpeakers(Object.keys(fullMeeting.speakerMap || {}));
+        setRecommendedTopics(fullMeeting.analysis.topics || []);
+        setExcludedTopics(fullMeeting.analysis.excludedTopics || []);
+      } else {
+        setDetectedSpeakers([]);
+        setRecommendedTopics([]);
+        setExcludedTopics([]);
+      }
+      setSuggestedKeywords(fullMeeting.keywords || []);
+      setPage('analyze');
+    } catch (err: any) {
+      console.warn("Failed to load full meeting from Notion. Loading cached template instead status.", err);
+      const cached = storage.getAll().find(c => c.id === meeting.id || (meeting.notionPageId && c.notionPageId === meeting.notionPageId));
+      if (cached) {
+        setCurrentMeeting(cached);
+        setPhase(cached.analysis ? 3 : 1);
+        setSuggestedKeywords(cached.keywords || []);
+        setPage('analyze');
+        setError(`⚠️ 노션 상세 로드 실패로 로컬 캐시 사본을 불러왔습니다. 상세: ${err.message || err}`);
+      } else {
+        setError(`회의 대화록 로딩 실패: ${err.message || err}`);
+      }
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress(null);
+    }
   };
 
-  const handleDeleteMeeting = (id: string) => {
+  const handleDeleteMeeting = async (id: string) => {
+    setIsAnalyzing(true);
+    setAnalysisProgress('삭제 처리 중...');
+    try {
+      const cached = storage.getAll().find(c => c.id === id);
+      const targetId = cached?.notionPageId || id;
+
+      if (targetId) {
+        const res = await fetch(`/api/notion/meetings/${targetId}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || '노션 페이지를 아카이브/삭제할 수 없습니다.');
+        }
+      }
+    } catch (e: any) {
+      console.warn("Notion delete failed, proceeding with local purge:", e);
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress(null);
+    }
+    
     storage.remove(id);
-    refreshMeetings();
-    if (currentMeeting.id === id) handleNewMeeting();
+    await refreshMeetings();
+    if (currentMeeting.id === id || (currentMeeting.notionPageId && currentMeeting.notionPageId === id)) {
+      handleNewMeeting();
+    }
   };
 
   const handlePreprocessApplied = (result: PreprocessResult) => {
@@ -105,6 +172,7 @@ export default function App() {
   const startPhase1Analysis = async (options?: { refresh?: boolean; stayInPhase1?: boolean }) => {
     if (!currentMeeting.originalTranscript) return;
     setIsAnalyzing(true);
+    setAnalysisProgress(null);
     setError(null);
     try {
       // 1. Run browser-side preprocessing before AI invocation
@@ -120,6 +188,40 @@ export default function App() {
         }
       });
 
+      // Split cleanedTranscript into chunked segments if length > 20,000 characters
+      const chunks = splitIntoChunks(cleanedTranscript);
+
+      const results: any[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks.length > 1) {
+          setAnalysisProgress(`${i + 1}/${chunks.length} 구간 분석 중...`);
+        } else {
+          setAnalysisProgress('분석 중...');
+        }
+
+        const response = await fetch('/api/analyze-topics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: chunks[i],
+            excludedTopics: options?.refresh ? excludedTopics : [],
+          }),
+        });
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        results.push(data);
+      }
+
+      // Merge sequential outputs
+      const mergedResult = mergeAnalyzeTopicsResponses(results);
+
+      // Merge speakers from server with locally preprocessed ones
+      const mergedSpeakers = Array.from(new Set([...initialClovaSpeakers, ...(mergedResult.speakers || [])]));
+
+      setDetectedSpeakers(mergedSpeakers);
+      setRecommendedTopics(mergedResult.topics || []);
+      setSuggestedKeywords(mergedResult.keywords || []);
+
       // Update current meeting state
       const nextMeeting = {
         ...currentMeeting,
@@ -130,29 +232,9 @@ export default function App() {
           after: preprocessResult.afterCount
         }
       };
-      setCurrentMeeting(nextMeeting);
-
-      // Invoke backend AI with the preprocessed, clean text
-      const response = await fetch('/api/analyze-topics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript: cleanedTranscript,
-          excludedTopics: options?.refresh ? excludedTopics : [],
-        }),
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      // Merge speakers from server with locally preprocessed ones
-      const mergedSpeakers = Array.from(new Set([...initialClovaSpeakers, ...(data.speakers || [])]));
-
-      setDetectedSpeakers(mergedSpeakers);
-      setRecommendedTopics(data.topics || []);
-      setSuggestedKeywords(data.keywords || []);
 
       if (!options?.refresh) {
-        const mergedKeywords = Array.from(new Set([...nextMeeting.keywords, ...(data.keywords || [])]));
+        const mergedKeywords = Array.from(new Set([...nextMeeting.keywords, ...(mergedResult.keywords || [])]));
         setCurrentMeeting(m => ({
           ...m,
           originalTranscript: cleanedTranscript,
@@ -180,6 +262,7 @@ export default function App() {
       setError(err.message);
     } finally {
       setIsAnalyzing(false);
+      setAnalysisProgress(null);
     }
   };
 
@@ -192,31 +275,48 @@ export default function App() {
     });
 
     setIsAnalyzing(true);
+    setAnalysisProgress(null);
     setError(null);
     try {
-      const response = await fetch('/api/refine-transcript', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript: currentMeeting.originalTranscript,
-          glossary: currentMeeting.glossary,
-          questions: currentMeeting.prefixedQuestions,
-          selectedTopics: currentMeeting.analysis.selectedTopics,
-          speakerMap: fullSpeakerMap,
-          keywords: currentMeeting.keywords,
-        }),
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
+      // Split cleanedTranscript into chunked segments if length > 20,000 characters
+      const chunks = splitIntoChunks(currentMeeting.originalTranscript);
+
+      const results: any[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks.length > 1) {
+          setAnalysisProgress(`${i + 1}/${chunks.length} 구간 분석 중...`);
+        } else {
+          setAnalysisProgress('심층 리포트 생성 중...');
+        }
+
+        const response = await fetch('/api/refine-transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: chunks[i],
+            glossary: currentMeeting.glossary,
+            questions: currentMeeting.prefixedQuestions,
+            selectedTopics: currentMeeting.analysis.selectedTopics,
+            speakerMap: fullSpeakerMap,
+            keywords: currentMeeting.keywords,
+          }),
+        });
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        results.push(data);
+      }
+
+      // Merge sequential outputs
+      const mergedResult = mergeRefineTranscriptResponses(results);
 
       const analysis: MeetingAnalysis = {
         topics: recommendedTopics,
         selectedTopics: currentMeeting.analysis.selectedTopics,
         excludedTopics,
-        summaryItems: data.summaryItems,
-        questionMappings: data.questionMappings,
-        actionItems: data.actionItems,
-        refinedTranscript: data.refinedLines.map((l: any, i: number) => ({ ...l, id: String(i) })),
+        summaryItems: mergedResult.summaryItems,
+        questionMappings: mergedResult.questionMappings,
+        actionItems: mergedResult.actionItems,
+        refinedTranscript: mergedResult.refinedLines.map((l: any, i: number) => ({ ...l, id: String(i) })),
       };
 
       setCurrentMeeting(m => ({ ...m, speakerMap: fullSpeakerMap, analysis }));
@@ -225,18 +325,47 @@ export default function App() {
       setError(err.message);
     } finally {
       setIsAnalyzing(false);
+      setAnalysisProgress(null);
     }
   };
 
-  const handleSaveMeeting = () => {
+  const handleSaveMeeting = async () => {
+    setIsAnalyzing(true);
+    setAnalysisProgress('노션 데이터베이스에 저장 중...');
     try {
       const toSave = { ...currentMeeting, updatedAt: new Date().toISOString() };
-      storage.save(toSave);
-      refreshMeetings();
-      alert('저장되었습니다!');
+      
+      const response = await fetch('/api/notion/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toSave),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `서버 오류 (상태코드: ${response.status})`);
+      }
+
+      const syncedMeeting = await response.json();
+      
+      // Save replica to localStorage as cache/backup
+      storage.save(syncedMeeting);
+      setCurrentMeeting(syncedMeeting);
+      await refreshMeetings();
+      alert('성공적으로 노션 데이터베이스에 저장되었습니다!');
     } catch (err: any) {
-      console.error(err);
-      alert(err.message || '저장 중 오류가 발생했습니다.');
+      console.error('Notion save error. Saving to local storage instead:', err);
+      try {
+        const localSave = { ...currentMeeting, updatedAt: new Date().toISOString() };
+        storage.save(localSave);
+        await refreshMeetings();
+        alert(`⚠️ 노션 저장을 완료할 수 없어 브라우저 로컬 스토리지에 대신 안전하게 임시 저장되었습니다.\n\n사유: ${err.message || err}`);
+      } catch (localErr: any) {
+        alert(`저장 실패: ${localErr.message || localErr}`);
+      }
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress(null);
     }
   };
 
@@ -304,6 +433,7 @@ export default function App() {
                         suggestedKeywords={suggestedKeywords}
                         onSave={handleSaveMeeting}
                         onPreprocessApplied={handlePreprocessApplied}
+                        analysisProgress={analysisProgress || undefined}
                       />
                     </motion.div>
                   )}
@@ -346,6 +476,7 @@ export default function App() {
                         onStartFinalAnalysis={startPhase2Analysis}
                         isAnalyzing={isAnalyzing}
                         onSave={handleSaveMeeting}
+                        analysisProgress={analysisProgress || undefined}
                       />
                     </motion.div>
                   )}

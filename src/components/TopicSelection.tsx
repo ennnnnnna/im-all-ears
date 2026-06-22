@@ -13,6 +13,7 @@ interface TopicSelectionProps {
   onStartFinalAnalysis: () => void;
   isAnalyzing: boolean;
   onSave?: () => void;
+  analysisProgress?: string;
 }
 
 export default function TopicSelection({
@@ -25,7 +26,8 @@ export default function TopicSelection({
   onExcludeTopic,
   onStartFinalAnalysis,
   isAnalyzing,
-  onSave
+  onSave,
+  analysisProgress
 }: TopicSelectionProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -257,7 +259,7 @@ export default function TopicSelection({
             {isAnalyzing && !isRefreshing ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-white animate-spin"></span>
-                심층 리포트 생성 중...
+                {analysisProgress || '심층 리포트 생성 중...'}
               </span>
             ) : (
               <>
@@ -268,8 +270,8 @@ export default function TopicSelection({
           </button>
         </div>
         {isAnalyzing && !isRefreshing && (
-          <p className="text-[11px] text-slate-500 font-medium text-center max-w-sm animate-pulse leading-medium">
-            선택하신 핵심 주제별 요약과 Q&A 매핑, 중요 액션 아이템 및 정제된<br />대화록을 AI가 함께 작성하고 있습니다. 평균 15초 이내에 완료됩니다.
+          <p className="text-[11px] text-purple-600 font-extrabold text-center max-w-sm animate-pulse leading-medium bg-purple-50/50 border border-purple-100/30 px-4 py-2.5 rounded-xl shadow-sm">
+            {analysisProgress ? `⚡ 현재 진행 상황: ${analysisProgress}` : '선택하신 핵심 주제별 요약과 Q&A 매핑, 중요 액션 아이템 및 정제된 대화록을 AI가 함께 작성하고 있습니다.'}
           </p>
         )}
       </div>

@@ -14,6 +14,7 @@ interface MeetingInputProps {
   suggestedKeywords?: string[];
   onSave?: () => void;
   onPreprocessApplied?: (result: any) => void;
+  analysisProgress?: string;
 }
 
 const EXAMPLE_TRANSCRIPT = `🧭 미지의 세계 탐사대 소통 기록
@@ -86,7 +87,8 @@ export default function MeetingInput({
   detectedSpeakers,
   suggestedKeywords = [],
   onSave,
-  onPreprocessApplied
+  onPreprocessApplied,
+  analysisProgress
 }: MeetingInputProps) {
   const [showSpeakerModal, setShowSpeakerModal] = useState(false);
   const [newKeyword, setNewKeyword] = useState('');
@@ -390,7 +392,7 @@ export default function MeetingInput({
                   `}
                 >
                   <Sparkles className="w-4 h-4 animate-pulse" />
-                  {isAnalyzing ? '분석 중...' : '화자 및 키워드 분석 시작'}
+                  {isAnalyzing ? (analysisProgress || '분석 중...') : '화자 및 키워드 분석 시작'}
                 </button>
               ) : (
                 <div className="space-y-4">

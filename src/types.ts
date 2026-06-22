@@ -62,4 +62,5 @@ export interface Meeting {
   createdAt: string;
   updatedAt: string;
   syncedAt?: string;
+  notionPageId?: string;
 }

@@ -2,6 +2,8 @@
  * Utilities for preprocessing CLOVA Note meeting transcripts in the browser.
  */
 
+import { SummaryItem, QuestionMapping, ActionItem } from '../types';
+
 export interface PreprocessResult {
   cleanedText: string;
   beforeCount: number;
@@ -111,5 +113,249 @@ export function preprocessTranscript(text: string): PreprocessResult {
     beforeCount,
     afterCount,
     detectedClovaSpeakers: Array.from(speakerSet)
+  };
+}
+
+/**
+ * Splits meeting transcript into paragraph-based chunks of at most maxChunkSize characters.
+ */
+export function splitIntoChunks(text: string, maxChunkSize: number = 18000): string[] {
+  if (text.length <= 20000) {
+    return [text];
+  }
+
+  const paragraphs = text.split('\n');
+  const chunks: string[] = [];
+  let currentChunk: string[] = [];
+  let currentLength = 0;
+
+  for (const para of paragraphs) {
+    const trimmedPara = para.trim();
+    if (!trimmedPara) continue; // skip trivial empty lines inside chunking
+
+    if (currentLength + trimmedPara.length + 1 > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.join('\n'));
+      currentChunk = [trimmedPara];
+      currentLength = trimmedPara.length;
+    } else {
+      currentChunk.push(trimmedPara);
+      currentLength += trimmedPara.length + 1; // +1 for the newline
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.join('\n'));
+  }
+
+  return chunks;
+}
+
+export interface AnalyzeTopicsResponse {
+  speakers?: string[];
+  topics?: string[];
+  keywords?: string[];
+}
+
+export interface RefineTranscriptResponse {
+  summaryItems?: Array<{
+    topic: string;
+    summary: string;
+    citations?: Array<{
+      id: number;
+      speaker: string;
+      text: string;
+    }>;
+  }>;
+  questionMappings?: Array<{
+    question: string;
+    answerMapping: string;
+  }>;
+  actionItems?: Array<{
+    who: string;
+    what: string;
+    when: string;
+  }>;
+  refinedLines?: Array<{
+    speakerId: string;
+    speakerName: string;
+    text: string;
+  }>;
+}
+
+/**
+ * Combines multiple Phase 1 (analyze-topics) results without duplicates.
+ */
+export function mergeAnalyzeTopicsResponses(responses: AnalyzeTopicsResponse[]): Required<AnalyzeTopicsResponse> {
+  const speakersSet = new Set<string>();
+  const topicsSet = new Set<string>();
+  const keywordsSet = new Set<string>();
+
+  for (const resp of responses) {
+    if (resp.speakers) {
+      resp.speakers.forEach(s => {
+        if (s && s.trim()) speakersSet.add(s.trim());
+      });
+    }
+    if (resp.topics) {
+      resp.topics.forEach(t => {
+        if (t && t.trim()) topicsSet.add(t.trim());
+      });
+    }
+    if (resp.keywords) {
+      resp.keywords.forEach(k => {
+        if (k && k.trim()) keywordsSet.add(k.trim());
+      });
+    }
+  }
+
+  return {
+    speakers: Array.from(speakersSet),
+    topics: Array.from(topicsSet),
+    keywords: Array.from(keywordsSet)
+  };
+}
+
+/**
+ * Sequentially fuses multiple Phase 2 (refine-transcript) responses:
+ * - Concatenates refinedLines chronologically.
+ * - Deduplicates action items.
+ * - Merges summaryItems: If same topic exists, joins summaries with double-newline and remaps footnotes to globally unique ids.
+ * - Group questionMappings and merges or takes valid mappings.
+ */
+export interface MergedRefineTranscriptResult {
+  summaryItems: SummaryItem[];
+  questionMappings: QuestionMapping[];
+  actionItems: ActionItem[];
+  refinedLines: Array<{ speakerId: string; speakerName: string; text: string }>;
+}
+
+export function mergeRefineTranscriptResponses(responses: RefineTranscriptResponse[]): MergedRefineTranscriptResult {
+  const mergedSummaryItems: SummaryItem[] = [];
+
+  const rawQuestionGroups = new Map<string, string[]>();
+  const mergedActionItems: Array<{ who: string; what: string; when: string }> = [];
+  const mergedRefinedLines: Array<{ speakerId: string; speakerName: string; text: string }> = [];
+
+  let citationGlobalId = 1;
+
+  for (const resp of responses) {
+    // 1. Merge refinedLines
+    if (resp.refinedLines) {
+      mergedRefinedLines.push(...resp.refinedLines);
+    }
+
+    // 2. Accumulate action items uniquely
+    if (resp.actionItems) {
+      for (const item of resp.actionItems) {
+        const whoStr = (item.who || '-').trim();
+        const whatStr = (item.what || '').trim();
+        const whenStr = (item.when || '-').trim();
+        
+        if (!whatStr) continue;
+
+        const isDup = mergedActionItems.some(
+          existing =>
+            existing.who.trim() === whoStr &&
+            existing.what.trim() === whatStr &&
+            existing.when.trim() === whenStr
+        );
+        if (!isDup) {
+          mergedActionItems.push({ who: whoStr, what: whatStr, when: whenStr });
+        }
+      }
+    }
+
+    // 3. Accumulate question mappings
+    if (resp.questionMappings) {
+      for (const q of resp.questionMappings) {
+        if (!q.question) continue;
+        const questionText = q.question.trim();
+        const answerText = (q.answerMapping || '').trim();
+        if (!rawQuestionGroups.has(questionText)) {
+          rawQuestionGroups.set(questionText, []);
+        }
+        
+        const isMockAnswer =
+          !answerText ||
+          answerText === '-' ||
+          answerText.includes('답변 없음') ||
+          answerText.includes('찾을 수 없음') ||
+          answerText.includes('본문에서 확인할 수 없습니다') ||
+          answerText.includes('언급되지 않았습니다');
+          
+        rawQuestionGroups.get(questionText)!.push(JSON.stringify({ text: answerText, isMock: isMockAnswer }));
+      }
+    }
+
+    // 4. Merge summary items with footnote/citation remapping
+    if (resp.summaryItems) {
+      for (const item of resp.summaryItems) {
+        if (!item.topic) continue;
+        const topicName = item.topic.trim();
+        
+        const citationLocalToGlobal: Record<number, number> = {};
+        const remappedCitations: Array<{ id: number; speaker: string; text: string }> = [];
+
+        if (item.citations) {
+          for (const cit of item.citations) {
+            const newId = citationGlobalId++;
+            citationLocalToGlobal[cit.id] = newId;
+            remappedCitations.push({
+              id: newId,
+              speaker: cit.speaker || '-',
+              text: cit.text || ''
+            });
+          }
+        }
+
+        let remappedSummary = item.summary || '';
+        if (Object.keys(citationLocalToGlobal).length > 0) {
+          remappedSummary = remappedSummary.replace(/\[(\d+)\]/g, (match, p1) => {
+            const localId = parseInt(p1, 10);
+            const globalId = citationLocalToGlobal[localId];
+            return globalId ? `[${globalId}]` : match;
+          });
+        }
+
+        const existingTopic = mergedSummaryItems.find(t => t.topic.trim().toLowerCase() === topicName.toLowerCase());
+        if (existingTopic) {
+          existingTopic.summary = existingTopic.summary.trim() + '\n\n' + remappedSummary.trim();
+          if (remappedCitations.length > 0) {
+            existingTopic.citations.push(...remappedCitations);
+          }
+        } else {
+          mergedSummaryItems.push({
+            topic: topicName,
+            summary: remappedSummary,
+            citations: remappedCitations
+          });
+        }
+      }
+    }
+  }
+
+  // Finalize question mappings:
+  const mergedQuestionMappings: Array<{ question: string; answerMapping: string }> = [];
+  for (const [question, itemsJson] of rawQuestionGroups.entries()) {
+    const parsed = itemsJson.map(j => JSON.parse(j));
+    const realAnswers = parsed.filter(p => !p.isMock).map(p => p.text);
+    let finalAnswer = '';
+    if (realAnswers.length > 0) {
+      const uniqueReal = Array.from(new Set(realAnswers));
+      finalAnswer = uniqueReal.join('\n');
+    } else {
+      finalAnswer = parsed[0]?.text || '내용을 구체적인 본문에서 확인할 수 없습니다.';
+    }
+    mergedQuestionMappings.push({
+      question,
+      answerMapping: finalAnswer
+    });
+  }
+
+  return {
+    summaryItems: mergedSummaryItems,
+    questionMappings: mergedQuestionMappings,
+    actionItems: mergedActionItems,
+    refinedLines: mergedRefinedLines
   };
 }
